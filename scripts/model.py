@@ -57,9 +57,9 @@ class AdaIN(nn.Module):
         self.style_shift = nn.Linear(w_dim, n_channels)
 
     def forward(self, image, w): #w is the style.
-        print("type of w is", type(w))
-        print("size of w is", w.size()) 
-        print(self.style_scale)
+        # print("type of w is", type(w))
+        # print("size of w is", w.size()) 
+        # print(self.style_scale)
         scale = self.style_scale(w)[:, :, None, None] #** batch and channel
         shift = self.style_shift(w)[:, :, None, None] #** batch and channel 
         return (self.norm(image) * scale) + shift
@@ -255,9 +255,9 @@ class ConvBlockDownSample(nn.Module):
 
     # foward pass of the normal conv
     def forward(self, input):
-        print("input size ", input.size())
+        # print("input size ", input.size())
         out = self.conv1(input)
-        print("after conv1 ", out.size())
+        # print("after conv1 ", out.size())
         out = self.conv2(out)
 
         return out
@@ -299,8 +299,8 @@ class StyleGANDiscriminator(nn.Module):
         for i in range(step, -1, -1):
             index = self.n_layer - i - 1
 
-            print(step)
-            print(i)
+            # print(step)
+            # print(i)
             if i == step:
                 out = self.from_rgb[index](input)
 
@@ -320,7 +320,7 @@ class StyleGANDiscriminator(nn.Module):
                     out = (1 - alpha) * skip_rgb + alpha * out
 
         out = out.squeeze(2).squeeze(2)
-        print("last step, out size", out.size())
+        # print("last step, out size", out.size())
         out = self.linear(out)
 
         return out
