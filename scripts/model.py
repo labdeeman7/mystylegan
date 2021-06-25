@@ -25,10 +25,10 @@ class InjectNoise(nn.Module):
 
         # self.device = device
 
-        self.weight = nn.Parameter(torch.randn(1, n_channels, 1, 1))  # ** learned per feature scaling factors. notice, 1 value per channel. (B)
+        self.weight = nn.Parameter(torch.randn(1, n_channels, 1, 1)).cuda()  # ** learned per feature scaling factors. notice, 1 value per channel. (B)
  
     def forward(self, image): # @@ need to change noise with changeable value, so as to show experiment.
-        return image +  torch.randn(image.size(0), 1, image.size(2), image.size(3)) * self.weight 
+        return image +  torch.randn(image.size(0), 1, image.size(2), image.size(3)).cuda() * self.weight 
 
 class AdaIN(nn.Module):
     def __init__(self, w_dim, n_channels, device="cpu"):
@@ -56,7 +56,10 @@ class AdaIN(nn.Module):
         self.style_scale = nn.Linear(w_dim, n_channels)   
         self.style_shift = nn.Linear(w_dim, n_channels)
 
-    def forward(self, image, w): #w is the style. 
+    def forward(self, image, w): #w is the style.
+        print("type of w is", type(w))
+        print("size of w is", w.size()) 
+        print(self.style_scale)
         scale = self.style_scale(w)[:, :, None, None] #** batch and channel
         shift = self.style_shift(w)[:, :, None, None] #** batch and channel 
         return (self.norm(image) * scale) + shift
@@ -82,13 +85,14 @@ class ConstantInput(nn.Module):
 # For MNIST use a smaller value for the work, like n_mlp should be 5 or 6. and hidden_size = 32.  
 class MappingNetwork(nn.Module):
     def __init__(self, z_dim, w_dim, hidden_size=512, n_mlp=8):  
-        super(MappingNetwork, self).__init__()
+        super().__init__()
 
         middle_layers = n_mlp - 2
 
         mapping_network = [PixelNorm()]
-        mapping_network.apppend(nn.linear(z_dim, hidden_size), nn.LeakyReLU(0.2))
-        # mapping_network.apppend(EqualLinear(z_dim, hidden_size), nn.LeakyReLU(0.2)) # @@ equallinear
+        mapping_network.append(nn.Linear(z_dim, hidden_size))
+        mapping_network.append(nn.LeakyReLU(0.2))
+        # mapping_network.append(EqualLinear(z_dim, hidden_size), nn.LeakyReLU(0.2)) # @@ equallinear
         
         for i in range(middle_layers):
             # mapping_network.append(EqualLinear(hidden_size, hidden_size))  # @@ equallinear
@@ -103,15 +107,7 @@ class MappingNetwork(nn.Module):
 
     def forward(self, input):
         #for either one or two styles
-        styles = []
-
-        if type(input) not in (list, tuple):
-            input = [input]
-
-        for w in input:
-            styles.append(self.mapping_network(w))
-        
-        return styles
+        return self.mapping_network(input)
 
 
 # The styled conv block. 
@@ -119,7 +115,7 @@ class MappingNetwork(nn.Module):
 # @@ Fused scaling was only used for greater than 128x128 in the original codebase. It was called auto, check lie 197 of netwoorks_stylegan.py 
 class StyledConvBlock(nn.Module):
     def __init__(self, w_dim, in_channel, out_channel, kernel_size=3, padding=1, upsample=False, device="cpu"):
-        super(StyledConvBlock, self).__init__()
+        super().__init__()
 
         # if initial:
         #     self.conv1 = ConstantInput(in_channel)
@@ -161,18 +157,18 @@ class StyledConvBlock(nn.Module):
 # generator 
 # @@ still need to understand mixing
 class StyleGANGenerator(nn.Module):
-    def __init__(self, in_channels, hidden_channels, z_dim, mapping_hidden_size, w_dim,
+    def __init__(self, in_channels, hidden_channels, out_channel, z_dim, mapping_hidden_size, w_dim,
                   n_mlp=8, device="cpu"): #** use hidden channels = 256 for 
 
-        super(StyleGANGenerator, self).__init__()
+        super().__init__()
 
         self.constant_input= nn.Parameter(torch.randn(1, in_channels, 4, 4))
     
-        self.mapping_network = MappingNetwork(z_dim, mapping_hidden_size, w_dim, n_mlp)
+        self.mapping_network = MappingNetwork(z_dim, w_dim, mapping_hidden_size, n_mlp)
 
         self.progression = nn.ModuleList(
             [
-                StyledConvBlock(w_dim, in_channels, 128, kernel_size=3, padding=1, initial=True),  # 4 
+                StyledConvBlock(w_dim, in_channels, 128, kernel_size=3, padding=1),  # 4 
                 StyledConvBlock(w_dim, 128, 64, kernel_size=3, padding=1, upsample=True),  # 8
                 StyledConvBlock(w_dim, 64, 16, kernel_size=3, padding=1, upsample=True)  # 16
             ]
@@ -181,9 +177,9 @@ class StyleGANGenerator(nn.Module):
         #define them differently, they are three different convolutions, used at 3 different instances. 
         self.to_rgb = nn.ModuleList(
             [
-                nn.Conv2d(128, 3, 1), #4
-                nn.Conv2d(64, 3, 1), #8
-                nn.Conv2d(16, 3, 1), #16
+                nn.Conv2d(128, out_channel, 1), #4
+                nn.Conv2d(64, out_channel, 1), #8
+                nn.Conv2d(16, out_channel, 1), #16
             ]
         )
 
@@ -219,33 +215,49 @@ class ConvBlockDownSample(nn.Module):
         out_channel,
         kernel_size,
         padding = 1,
+        kernel_size2=None,
+        padding2=None,
         downsample=False,
     ):
-        super(ConvBlockDownSample, self).__init__()
+        super().__init__()
+
+        pad1 = padding
+        pad2 = padding
+        if padding2 is not None:
+            pad2 = padding2
+
+        kernel1 = kernel_size
+        kernel2 = kernel_size
+        if kernel_size2 is not None:
+            kernel2 = kernel_size2
 
         #first conv
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channel, out_channel, kernel_size, padding),
+            nn.Conv2d(in_channel, out_channel, kernel1, padding=pad1),
             nn.LeakyReLU(0.2),
         )
 
         # note that the convolutions are the same size for the fused out sampling. Also note that the blur is done after the nearest neighbor has been done. . 
         if downsample:
+            # print("downsample true")
             self.conv2 = nn.Sequential(
-                nn.Conv2d(out_channel, out_channel, kernel_size, padding),
+                nn.Conv2d(out_channel, out_channel, kernel2, padding=pad2),
                 nn.AvgPool2d(2), # downsampling been done here. 
                 nn.LeakyReLU(0.2),
             )
 
         else:
+            # print("downsample false")
             self.conv2 = nn.Sequential(
-                nn.Conv2d(out_channel, out_channel, kernel_size, padding),
+                nn.Conv2d(out_channel, out_channel, kernel2, padding=pad2),
                 nn.LeakyReLU(0.2),
             )
 
     # foward pass of the normal conv
     def forward(self, input):
+        print("input size ", input.size())
         out = self.conv1(input)
+        print("after conv1 ", out.size())
         out = self.conv2(out)
 
         return out
@@ -253,23 +265,23 @@ class ConvBlockDownSample(nn.Module):
   
 
 class StyleGANDiscriminator(nn.Module):
-    def __init__(self, in_size = 3, from_rgb_activate=False):
-        super(StyleGANDiscriminator, self).__init__()
+    def __init__(self, in_size = 1, from_rgb_activate=False): #black and white or coloured.
+        super().__init__()
 
         self.progression = nn.ModuleList(
             [
                 ConvBlockDownSample(16, 64, 3, 1, downsample=True),  # 16
                 ConvBlockDownSample(64, 128, 3, 1, downsample=True),  # 8
-                ConvBlockDownSample(129, 128, 3, 1, downsample=True),  # 4
+                ConvBlockDownSample(129, 128, 3, 1, 4, 0),  # 4
             ]
         )
 
         def make_from_rgb(out_channel):
             if from_rgb_activate:
-                return nn.Sequential(nn.Conv2d(3, out_channel, 1), nn.LeakyReLU(0.2))
+                return nn.Sequential(nn.Conv2d(in_size, out_channel, 1), nn.LeakyReLU(0.2))
 
             else:
-                return nn.Conv2d(3, out_channel, 1)
+                return nn.Conv2d(in_size, out_channel, 1)
 
         self.from_rgb = nn.ModuleList(
             [
@@ -287,6 +299,8 @@ class StyleGANDiscriminator(nn.Module):
         for i in range(step, -1, -1):
             index = self.n_layer - i - 1
 
+            print(step)
+            print(i)
             if i == step:
                 out = self.from_rgb[index](input)
 
@@ -306,10 +320,7 @@ class StyleGANDiscriminator(nn.Module):
                     out = (1 - alpha) * skip_rgb + alpha * out
 
         out = out.squeeze(2).squeeze(2)
+        print("last step, out size", out.size())
         out = self.linear(out)
 
         return out
-
-
-
-            
