@@ -65,18 +65,19 @@ class AdaIN(nn.Module):
         return (self.norm(image) * scale) + shift
 
 
-class ConstantInput(nn.Module):
-    def __init__(self, channel, size=4):
-        super().__init__()
+# class ConstantInput(nn.Module):
+#     def __init__(self, channel, size=4):
+#         super().__init__()
 
-        self.input = nn.Parameter(torch.randn(1, channel, size, size))
+#         self.input = nn.Parameter(torch.randn(1, channel, size, size))
 
-    #note that it is the input
-    def forward(self, input):
-        batch = input.shape[0]
-        out = self.input.repeat(batch, 1, 1, 1) # for the batch size. Use the same constant input
+#     #note that it is the input
+#     def forward(self, input):
+#         batch = input.shape[0]
+#         out = self.input.repeat(batch, 1, 1, 1) # for the batch size. Use the same constant input
 
-        return out
+#         return out
+
 
 # should be 8 fully connected layers. with 512 input mapping to 512 output
 # @@ needs to be adapted for mean _style.
@@ -127,7 +128,7 @@ class StyledConvBlock(nn.Module):
                     in_channel, out_channel, kernel_size, padding=padding
                 ),
             )
-        else:
+        else: #?? check why. 
             self.conv1 = nn.Conv2d(
                 in_channel, out_channel, kernel_size, padding=padding
             )
@@ -170,7 +171,8 @@ class StyleGANGenerator(nn.Module):
             [
                 StyledConvBlock(w_dim, in_channels, 128, kernel_size=3, padding=1),  # 4 
                 StyledConvBlock(w_dim, 128, 64, kernel_size=3, padding=1, upsample=True),  # 8
-                StyledConvBlock(w_dim, 64, 16, kernel_size=3, padding=1, upsample=True)  # 16
+                StyledConvBlock(w_dim, 64, 32, kernel_size=3, padding=1, upsample=True),  # 16
+                StyledConvBlock(w_dim, 32, 16, kernel_size=3, padding=1, upsample=True)  # 32
             ]
         )
 
@@ -179,7 +181,8 @@ class StyleGANGenerator(nn.Module):
             [
                 nn.Conv2d(128, out_channel, 1), #4
                 nn.Conv2d(64, out_channel, 1), #8
-                nn.Conv2d(16, out_channel, 1), #16
+                nn.Conv2d(32, out_channel, 1), #16
+                nn.Conv2d(16, out_channel, 1), #32
             ]
         )
 
@@ -262,15 +265,14 @@ class ConvBlockDownSample(nn.Module):
 
         return out
 
-  
-
 class StyleGANDiscriminator(nn.Module):
     def __init__(self, in_size = 1, from_rgb_activate=False): #black and white or coloured.
         super().__init__()
 
         self.progression = nn.ModuleList(
             [
-                ConvBlockDownSample(16, 64, 3, 1, downsample=True),  # 16
+                ConvBlockDownSample(16, 32, 3, 1, downsample=True),  # 32
+                ConvBlockDownSample(32, 64, 3, 1, downsample=True),  # 16
                 ConvBlockDownSample(64, 128, 3, 1, downsample=True),  # 8
                 ConvBlockDownSample(129, 128, 3, 1, 4, 0),  # 4
             ]
@@ -286,6 +288,7 @@ class StyleGANDiscriminator(nn.Module):
         self.from_rgb = nn.ModuleList(
             [
                 make_from_rgb(16),
+                make_from_rgb(32),
                 make_from_rgb(64),
                 make_from_rgb(128)
             ]
