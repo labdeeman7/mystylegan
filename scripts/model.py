@@ -11,6 +11,61 @@ from torch.nn import functional as F
 #** a form of normalization used in progan instead of batch normalization
 #** normalizes the feature vectors in each pixel to unit length, applied after the convolutional layers, this is changed in style gan to adaptive instance normalization
 #** only used at the begining of the mapping network for styleGAN to normalize the z-inout
+class EqualLR:
+    def __init__(self, name):
+        self.name = name
+
+    def compute_weight(self, module):
+        weight = getattr(module, self.name + '_orig')
+        fan_in = weight.data.size(1) * weight.data[0][0].numel()
+
+        return weight * sqrt(2 / fan_in)
+
+    @staticmethod
+    def apply(module, name):
+        fn = EqualLR(name)
+
+        weight = getattr(module, name)
+        del module._parameters[name]
+        module.register_parameter(name + '_orig', nn.Parameter(weight.data))
+        module.register_forward_pre_hook(fn)
+
+        return fn
+
+    def __call__(self, module, input):
+        weight = self.compute_weight(module)
+        setattr(module, self.name, weight)
+
+def equal_lr(module, name='weight'):
+    EqualLR.apply(module, name)
+
+    return module
+
+class EqualConv2d(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+
+        conv = EqualConv2d(*args, **kwargs)
+        conv.weight.data.normal_()
+        conv.bias.data.zero_()
+        self.conv = equal_lr(conv)
+
+    def forward(self, input):
+        return self.conv(input)
+
+class EqualLinear(nn.Module):
+    def __init__(self, in_dim, out_dim):
+        super().__init__()
+
+        linear = EqualLinear(in_dim, out_dim)
+        linear.weight.data.normal_()
+        linear.bias.data.zero_()
+
+        self.linear = equal_lr(linear)
+
+    def forward(self, input):
+        return self.linear(input)
+
 class PixelNorm(nn.Module):
     def __init__(self):
         super().__init__()
@@ -53,8 +108,8 @@ class AdaIN(nn.Module):
         # self.style.linear.bias.data[in_channel:] = 0 # for the standard dev. 
         # ?? what is the reason for making the bias one and zero??
 
-        self.style_scale = nn.Linear(w_dim, n_channels)   
-        self.style_shift = nn.Linear(w_dim, n_channels)
+        self.style_scale = EqualLinear(w_dim, n_channels)   
+        self.style_shift = EqualLinear(w_dim, n_channels)
 
     def forward(self, image, w): #w is the style.
         # print("type of w is", type(w))
@@ -63,21 +118,6 @@ class AdaIN(nn.Module):
         scale = self.style_scale(w)[:, :, None, None] #** batch and channel
         shift = self.style_shift(w)[:, :, None, None] #** batch and channel 
         return (self.norm(image) * scale) + shift
-
-
-# class ConstantInput(nn.Module):
-#     def __init__(self, channel, size=4):
-#         super().__init__()
-
-#         self.input = nn.Parameter(torch.randn(1, channel, size, size))
-
-#     #note that it is the input
-#     def forward(self, input):
-#         batch = input.shape[0]
-#         out = self.input.repeat(batch, 1, 1, 1) # for the batch size. Use the same constant input
-
-#         return out
-
 
 # should be 8 fully connected layers. with 512 input mapping to 512 output
 # @@ needs to be adapted for mean _style.
@@ -91,17 +131,17 @@ class MappingNetwork(nn.Module):
         middle_layers = n_mlp - 2
 
         mapping_network = [PixelNorm()]
-        mapping_network.append(nn.Linear(z_dim, hidden_size))
+        mapping_network.append(EqualLinear(z_dim, hidden_size))
         mapping_network.append(nn.LeakyReLU(0.2))
         # mapping_network.append(EqualLinear(z_dim, hidden_size), nn.LeakyReLU(0.2)) # @@ equallinear
         
         for i in range(middle_layers):
             # mapping_network.append(EqualLinear(hidden_size, hidden_size))  # @@ equallinear
-            mapping_network.append(nn.Linear(hidden_size, hidden_size))
+            mapping_network.append(EqualLinear(hidden_size, hidden_size))
             mapping_network.append(nn.LeakyReLU(0.2))
 
         mapping_network.append(
-            nn.Linear(hidden_size, w_dim)
+            EqualLinear(hidden_size, w_dim)
         )
 
         self.mapping_network = nn.Sequential(*mapping_network)
@@ -124,12 +164,12 @@ class StyledConvBlock(nn.Module):
         if upsample:
             self.conv1 = nn.Sequential(
                 nn.Upsample(scale_factor=2, mode="bilinear"), 
-                nn.Conv2d(
+                EqualConv2d(
                     in_channel, out_channel, kernel_size, padding=padding
                 ),
             )
         else: #?? check why. 
-            self.conv1 = nn.Conv2d(
+            self.conv1 = EqualConv2d(
                 in_channel, out_channel, kernel_size, padding=padding
             )
 
@@ -137,7 +177,7 @@ class StyledConvBlock(nn.Module):
         self.adain1 = AdaIN(w_dim, out_channel)
         self.lrelu1 = nn.LeakyReLU(0.2)
 
-        self.conv2 = nn.Conv2d(out_channel, out_channel, kernel_size, padding=padding)
+        self.conv2 = EqualConv2d(out_channel, out_channel, kernel_size, padding=padding)
         self.noise2 = InjectNoise(out_channel)
         self.adain2 = AdaIN(w_dim, out_channel)
         self.lrelu2 = nn.LeakyReLU(0.2)
@@ -179,10 +219,10 @@ class StyleGANGenerator(nn.Module):
         #define them differently, they are three different convolutions, used at 3 different instances. 
         self.to_rgb = nn.ModuleList(
             [
-                nn.Conv2d(128, out_channel, 1), #4
-                nn.Conv2d(64, out_channel, 1), #8
-                nn.Conv2d(32, out_channel, 1), #16
-                nn.Conv2d(16, out_channel, 1), #32
+                EqualConv2d(128, out_channel, 1), #4
+                EqualConv2d(64, out_channel, 1), #8
+                EqualConv2d(32, out_channel, 1), #16
+                EqualConv2d(16, out_channel, 1), #32
             ]
         )
 
@@ -236,7 +276,7 @@ class ConvBlockDownSample(nn.Module):
 
         #first conv
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channel, out_channel, kernel1, padding=pad1),
+            EqualConv2d(in_channel, out_channel, kernel1, padding=pad1),
             nn.LeakyReLU(0.2),
         )
 
@@ -244,7 +284,7 @@ class ConvBlockDownSample(nn.Module):
         if downsample:
             # print("downsample true")
             self.conv2 = nn.Sequential(
-                nn.Conv2d(out_channel, out_channel, kernel2, padding=pad2),
+                EqualConv2d(out_channel, out_channel, kernel2, padding=pad2),
                 nn.AvgPool2d(2), # downsampling been done here. 
                 nn.LeakyReLU(0.2),
             )
@@ -252,7 +292,7 @@ class ConvBlockDownSample(nn.Module):
         else:
             # print("downsample false")
             self.conv2 = nn.Sequential(
-                nn.Conv2d(out_channel, out_channel, kernel2, padding=pad2),
+                EqualConv2d(out_channel, out_channel, kernel2, padding=pad2),
                 nn.LeakyReLU(0.2),
             )
 
@@ -280,10 +320,10 @@ class StyleGANDiscriminator(nn.Module):
 
         def make_from_rgb(out_channel):
             if from_rgb_activate:
-                return nn.Sequential(nn.Conv2d(in_size, out_channel, 1), nn.LeakyReLU(0.2))
+                return nn.Sequential(EqualConv2d(in_size, out_channel, 1), nn.LeakyReLU(0.2))
 
             else:
-                return nn.Conv2d(in_size, out_channel, 1)
+                return EqualConv2d(in_size, out_channel, 1)
 
         self.from_rgb = nn.ModuleList(
             [
@@ -296,7 +336,7 @@ class StyleGANDiscriminator(nn.Module):
 
         self.n_layer = len(self.progression)
 
-        self.linear = nn.Linear(128, 1)
+        self.linear = EqualLinear(128, 1)
 
     def forward(self, input, step=0, alpha=-1):
         for i in range(step, -1, -1):
