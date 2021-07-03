@@ -45,7 +45,7 @@ class EqualConv2d(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__()
 
-        conv = EqualConv2d(*args, **kwargs)
+        conv = nn.Conv2d(*args, **kwargs)
         conv.weight.data.normal_()
         conv.bias.data.zero_()
         self.conv = equal_lr(conv)
@@ -57,7 +57,7 @@ class EqualLinear(nn.Module):
     def __init__(self, in_dim, out_dim):
         super().__init__()
 
-        linear = EqualLinear(in_dim, out_dim)
+        linear = nn.Linear(in_dim, out_dim)
         linear.weight.data.normal_()
         linear.bias.data.zero_()
 
@@ -198,7 +198,7 @@ class StyledConvBlock(nn.Module):
 # generator 
 # @@ still need to understand mixing
 class StyleGANGenerator(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channel, z_dim, mapping_hidden_size, w_dim,
+    def __init__(self, in_channels, out_channel, z_dim, mapping_hidden_size, w_dim,
                   n_mlp=8, device="cpu"): #** use hidden channels = 256 for 
 
         super().__init__()

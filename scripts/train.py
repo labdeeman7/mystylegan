@@ -9,7 +9,7 @@ from torch.nn import functional as F
 from torch.autograd import Variable, grad
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms, utils
-from prepare_dataset import get_mnist_batch_color
+from .prepare_dataset import get_mnist_batch_color
 
 def train(args, generator, discriminator, g_optimizer, d_optimizer, epochs, mnist_color = False):
 
