@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms, utils
 from .prepare_dataset import get_mnist_batch_color
 
-def train(args, generator, discriminator, g_optimizer, d_optimizer, epochs, mnist_color = False):
+def train(args, generator, discriminator, g_optimizer, d_optimizer, trainloader, writer, epochs, mnist_color = False, mnist_color_background = None):
 
   init_size = args["init_size"]
   max_size = args["max_size"]
@@ -20,6 +20,7 @@ def train(args, generator, discriminator, g_optimizer, d_optimizer, epochs, mnis
   n_critic = args["n_critic"]
   gen_sample = args["gen_sample"] 
   store_generator_at_iteration = args["store_generator_at_iteration"]
+  BATCH_SIZE = args["BATCH_SIZE"]
 
   step = int(math.log2(init_size)) - 2 # 0 = 4, 1 = 8, 2 = 16
   resolution = 4 * 2 ** step
@@ -98,7 +99,7 @@ def train(args, generator, discriminator, g_optimizer, d_optimizer, epochs, mnis
           
       
       if mnist_color:
-            real_image = get_mnist_batch_color(real_image)
+            real_image = get_mnist_batch_color(real_image, mnist_color_background)
             real_image = torch.tensor(real_image, dtype=torch.float)
 
       used_sample += real_image.shape[0]
