@@ -7,6 +7,7 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+import math
 
 #** a form of normalization used in progan instead of batch normalization
 #** normalizes the feature vectors in each pixel to unit length, applied after the convolutional layers, this is changed in style gan to adaptive instance normalization
@@ -19,7 +20,7 @@ class EqualLR:
         weight = getattr(module, self.name + '_orig')
         fan_in = weight.data.size(1) * weight.data[0][0].numel()
 
-        return weight * sqrt(2 / fan_in)
+        return weight * math.sqrt(2 / fan_in)
 
     @staticmethod
     def apply(module, name):
