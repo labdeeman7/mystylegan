@@ -9,9 +9,8 @@ from torch.nn import functional as F
 from torch.autograd import Variable, grad
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms, utils
-from .prepare_dataset import get_mnist_batch_color
 
-def train(args, generator, discriminator, g_optimizer, d_optimizer, trainloader, writer, epochs, mnist_color = False, mnist_color_background = None):
+def train(args, generator, discriminator, g_optimizer, d_optimizer, trainloader, writer, epochs):
 
   init_size = args["init_size"]
   max_size = args["max_size"]
@@ -97,10 +96,6 @@ def train(args, generator, discriminator, g_optimizer, d_optimizer, trainloader,
           data_loader = iter(loader)
           real_image, real_labels = next(data_loader)
           
-      
-      if mnist_color:
-            real_image = get_mnist_batch_color(real_image, mnist_color_background)
-            real_image = torch.tensor(real_image, dtype=torch.float)
 
       used_sample += real_image.shape[0]
       n_iter_resolution += 1 
