@@ -28,7 +28,7 @@ def train(args, generator, discriminator, g_optimizer, d_optimizer, trainloader,
   data_loader = iter(loader)
 
   phase = epochs * dataset_size
-  no_of_iterations = epochs * dataset_size
+  no_of_iterations = epochs * dataset_size + 10_000
   pbar = tqdm(range(no_of_iterations))
 
   #discriminator training
