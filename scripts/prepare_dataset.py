@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 class get_color_mnist(object):
   def __init__(self, template_img):
@@ -23,5 +24,6 @@ class get_color_mnist(object):
 
     # Invert the colors at the location of the number
     image[img_binary] = 1 - image[img_binary]
+    image = torch.tensor(image, dtype=torch.float)
 
     return image
