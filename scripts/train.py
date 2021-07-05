@@ -80,10 +80,10 @@ def train(args, generator, discriminator, g_optimizer, d_optimizer, trainloader,
           #save the networks states. 
           torch.save(
               {
-                  'generator': generator.state_dict(),
-                  'discriminator': discriminator.state_dict(),
-                  'g_optimizer': g_optimizer.state_dict(),
-                  'd_optimizer': d_optimizer.state_dict(),
+                  'generator': generator,
+                  'discriminator': discriminator,
+                  'g_optimizer': g_optimizer,
+                  'd_optimizer': d_optimizer,
               },
               f'checkpoint/train_step-{ckpt_step}.model',
           )
@@ -197,7 +197,7 @@ def train(args, generator, discriminator, g_optimizer, d_optimizer, trainloader,
 
       if (i + 1) % store_generator_at_iteration == 0:
           torch.save(
-              generator.state_dict(), f'checkpoint/{str(i + 1).zfill(6)}.model'
+              generator, f'checkpoint/{str(i + 1).zfill(6)}.model'
           )
 
       state_msg = (
